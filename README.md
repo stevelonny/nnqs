@@ -12,6 +12,9 @@ Custom keras Model or tf.module.
 - **RBM** visible bias, hidden bias, weights hidden->visible
 - **...**
 
+### Sampler
+Samples using M(RT)2 from the wave function
+
 ### Hamiltonian
 Will need to compute local energy having a batch of samples and the wave function.
 $$
@@ -29,6 +32,8 @@ $$
 $$
 where $\bold{S}$ is the quantum geometric tensor or covariance matrix of the local operators, and $\vec{F}$ is the force vector. Weights are then updated according to this imaginary time evolution of the parameters.
 
+### Exact solutions
+asd
 
 ## References
 Articles:
