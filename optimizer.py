@@ -1,17 +1,215 @@
+"""Module for variational Monte Carlo (VMC) optimizers for quantum spin models.
+
+Provides:
+- QOptimzer: base class for optimization routines.
+- VMC: variational Monte Carlo optimizer using SGD.
+- StochasticReconfiguration: natural gradient optimizer via stochastic reconfiguration.
+"""
+
 import tensorflow as tf
 import numpy as np
 
-class VMC:
-    def __init__(self, wave_function, hamiltonian, sampler, learning_rate):
-        self.wave_function = wave_function
-        self.hamiltonian = hamiltonian
-        self.sampler = sampler
-        self.learning_rate = learning_rate
+class QOptimzer:
+    """Base class for quantum optimizers applying variational Monte Carlo or stochastic reconfiguration methods.
 
-class StocRec:
-    def __init__(self, wave_function, hamiltonian, sampler, learning_rate):
+    Args:
+        wave_function: Variational wave function model (e.g., RBM).
+        hamiltonian: Hamiltonian object for computing local energies.
+        sampler: Sampler object for generating configuration samples.
+        learning_rate: Learning rate for parameter updates.
+
+    Attributes:
+        optimizer: TensorFlow optimizer instance used for parameter updates.
+    """
+
+    def __init__(self, wave_function, hamiltonian, sampler, learning_rate=0.01):
+        """Initialize the optimizer with the given wave function, Hamiltonian, sampler, and learning rate.
+
+        Args:
+            wave_function: Model representing the variational wave function.
+            hamiltonian: Hamiltonian object for computing local energies.
+            sampler: Sampler for generating samples from |ψ|^2 distribution.
+            learning_rate: Float learning rate for the internal TensorFlow optimizer.
+        """
         self.wave_function = wave_function
         self.hamiltonian = hamiltonian
         self.sampler = sampler
         self.learning_rate = learning_rate
+        self.optimizer = tf.optimizers.SGD(learning_rate=learning_rate)
+
+    def train(self, n_iterations, verbose=True):
+        """Run optimization loop for a number of iterations.
+
+        Args:
+            n_iterations: Integer number of optimization steps to perform.
+            verbose: Boolean flag to print progress each iteration.
+
+        Returns:
+            Dictionary with keys 'energies' and 'variances', containing histories.
+        """
+        energy_history = []
+        variance_history = []
+        for i in range(n_iterations):
+            energy, variance = self.optimize_step()
+            energy_history.append(float(energy))
+            variance_history.append(float(variance))
+            if verbose:
+                print(
+                    f"Iteration {i}: Energy = {energy:.6f}, Variance = {variance:.6f}"
+                )
+        return {"energies": energy_history, "variances": variance_history}
+    
+    def optimize_step(self):
+        """Perform a single optimization step. Must be implemented by subclasses.
+
+        Raises:
+            NotImplementedError: If not implemented by subclass.
+
+        Returns:
+            Tuple (mean_energy, variance) after the optimization step.
+        """
+        raise NotImplementedError("This method should be implemented in subclasses.")
+
+class VMC(QOptimzer):
+    """Variational Monte Carlo optimizer using standard energy gradient descent.
+
+    Implements optimization by computing gradients of the energy expectation value via Monte Carlo sampling.
+    """
+
+    def __init__(self, wave_function, hamiltonian, sampler, learning_rate):
+        super().__init__(wave_function, hamiltonian, sampler, learning_rate)
+
+    def compute_gradients(self, samples, local_energies):
+        """Compute parameter gradients using VMC energy derivatives.
+
+        Args:
+            samples: Tensor of sampled spin configurations.
+            local_energies: Tensor of local energy values for each sample.
+
+        Returns:
+            gradients: List of gradient tensors matching trainable variable shapes.
+            mean_energy: Scalar mean of the provided local energies.
+        """
+
+        with tf.GradientTape() as tape:
+            log_psi = self.wave_function.log_psi(samples)
+
+        grad_log_psi = tape.jacobian(log_psi, self.wave_function.trainable_variables)
+
+        # print("Gradients of log_psi:", [g.shape if g is not None else None for g in grad_log_psi])
+
+        mean_energy = tf.reduce_mean(local_energies)
+        gradients = []
+
+        for grad_i in grad_log_psi:
+            if grad_i is not None:
+                # Covariance term: <E_loc * grad_log_psi> - <E_loc> * <grad_log_psi>
+                expand_shape = tf.concat([[tf.shape(local_energies)[0]], tf.ones(tf.rank(grad_i) - 1, dtype=tf.int32)], axis=0)
+                e_loc_expanded = tf.reshape(local_energies, expand_shape)
+                loc_grad = e_loc_expanded * grad_i
+                grad_energy = tf.reduce_mean(loc_grad, axis=0)
+                grad_log_psi_mean = tf.reduce_mean(grad_i, axis=0)
+
+                vmc_grad = 2.0 * (grad_energy - mean_energy * grad_log_psi_mean)
+                gradients.append(vmc_grad)
+            else:
+                gradients.append(None)
+
+        gradients = [
+            tf.convert_to_tensor(g) if g is not None else None for g in gradients
+        ]
+
+        return gradients, mean_energy
+
+    def optimize_step(self):
+        """Execute one VMC optimization step: sample, compute gradients, and apply updates.
+
+        Returns:
+            mean_energy: Scalar mean energy after this step.
+            variance: Scalar variance of local energy distribution.
+        """
+
+        samples = self.sampler.sample(self.wave_function)
+        local_energies = self.hamiltonian.local_energy(samples, self.wave_function)
+
+        gradients, mean_energy = self.compute_gradients(samples, local_energies)
+
+        self.optimizer.apply_gradients(
+            zip(gradients, self.wave_function.trainable_variables)
+        )
+
+        variance = tf.reduce_mean(tf.square(local_energies - mean_energy))
+
+        return mean_energy, variance
+
+class StochasticReconfiguration(QOptimzer):
+    """Natural gradient optimizer using Stochastic Reconfiguration (quantum Fisher metric).
+
+    Approximates the quantum geometric tensor via sample covariance of score functions.
+    """
+
+    def __init__(self, wave_function, hamiltonian, sampler, learning_rate=0.01, epsilon=0.001):
+        super().__init__(wave_function, hamiltonian, sampler, learning_rate)
+        self.epsilon = epsilon
+
+    def optimize_step(self):
+        """Perform one optimization step using the quantum natural gradient.
+
+        Samples configurations, builds the covariance (QGT) matrix, regularizes, and updates parameters.
+
+        Returns:
+            mean_energy: Scalar average local energy.
+            variance: Scalar variance of the local energy distribution.
+        """
+
+        samples = self.sampler.sample(self.wave_function)
+        local_energies = self.hamiltonian.local_energy(samples, self.wave_function)
+        n_samples = tf.shape(samples)[0]
+
+        # compute local operators
+        with tf.GradientTape() as tape:
+            log_psi = self.wave_function.log_psi(samples)
+        grad_log_psi = tape.jacobian(log_psi, self.wave_function.trainable_variables)
+
+        flat_grads = []
+        param_sizes = []
+        for g in grad_log_psi:
+            g_flat = tf.reshape(g, [n_samples, -1])
+            param_sizes.append(tf.shape(g_flat)[1])
+            flat_grads.append(g_flat)
+
+        # the QGT/covariance matrix needs centered data
+        O = tf.concat(flat_grads, axis=1)
+        O_mean = tf.reduce_mean(O, axis=0)
+        O_centered = O - O_mean
+
+        # compute covariance matrix / QGT
+        S = tf.matmul(O_centered, O_centered, transpose_a=True) / tf.cast(
+            n_samples, tf.float32
+        )
+
+        # compute force vector
+        mean_energy = tf.reduce_mean(local_energies)
+        F_vec = (
+            tf.reduce_mean(local_energies[:, None] * O, axis=0) - mean_energy * O_mean
+        )
+
+        # solve for delta
+        P = tf.shape(S)[0]
+        S_reg = S + self.epsilon * tf.eye(P, dtype=S.dtype)
+        gradients = tf.linalg.solve(S_reg, tf.expand_dims(F_vec, 1))
+        
+        gradients = tf.squeeze(gradients, 1)
+        gradients = tf.split(gradients, param_sizes, axis=0)
+        gradients = [
+            tf.reshape(d, var.shape)
+            for var, d in zip(self.wave_function.trainable_variables, gradients)
+        ]
+
+        self.optimizer.apply_gradients(
+            zip(gradients, self.wave_function.trainable_variables)
+        )
+
+        variance = tf.reduce_mean(tf.square(local_energies - mean_energy))
+        return mean_energy, variance
 
