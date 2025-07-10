@@ -47,10 +47,7 @@ class MRT2:
         sites = tf.random.uniform((batch_size,), maxval=n_sites, dtype=tf.int32)
 
         mask = tf.one_hot(sites, n_sites, dtype=tf.int32)
-
-        flipped_state = state + mask * (
-            tf.ones(tf.shape(state), dtype=tf.int32) - 2 * state
-        )
+        flipped_state = state ^ mask
         return flipped_state
 
     def sample(self, wave_function):
@@ -140,3 +137,53 @@ class MRT2:
         final_samples = samples_flat[: self.batch_size]
 
         return tf.cast(final_samples, tf.float32), acceptance_rate, kernel_results
+
+
+class GibbsSampler:
+    """
+    Block Gibbs sampler for RBM wave functions.
+
+    Alternates between sampling hidden and visible units.
+
+    Attributes:
+        n_visible (int): Number of visible units.
+        n_hidden (int): Number of hidden units.
+        k (int): Number of Gibbs steps per sample.
+        batch_size (int): Number of parallel chains / samples.
+        current_state (tf.Variable): Current visible configurations.
+    """
+
+    def __init__(self, n_visible, n_hidden, k, batch_size):
+        self.n_visible = n_visible
+        self.n_hidden = n_hidden
+        self.k = k
+        self.batch_size = batch_size
+
+        # Initialize persistent visible state
+        self.current_state = tf.Variable(
+            tf.random.uniform((batch_size, n_visible), maxval=2, dtype=tf.int32),
+            trainable=False,
+            name="gibbs_state",
+        )
+
+    def sample(self, wave_function):
+        """
+        Generate samples using k steps of block Gibbs sampling.
+
+        :param wave_function: RBM wave function with attributes a, b, W
+        :return: samples of shape (batch_size, n_visible) in {0,1}
+        """
+        # Start from persistent visible state
+        v = tf.cast(self.current_state, tf.float32)
+        # Gibbs sampling steps
+        for _ in range(self.k):
+            # Sample hidden given visible
+            p_h = tf.sigmoid(wave_function.b + tf.matmul(v, wave_function.W))
+            h = tf.cast(tf.random.uniform(tf.shape(p_h), dtype=tf.float32) < p_h, tf.float32)
+            # Sample visible given hidden
+            p_v = tf.sigmoid(wave_function.a + tf.matmul(h, tf.transpose(wave_function.W)))
+            v = tf.cast(tf.random.uniform(tf.shape(p_v), dtype=tf.float32) < p_v, tf.float32)
+        # Update persistent state
+        self.current_state.assign(tf.cast(v, tf.int32))
+        return v
+
