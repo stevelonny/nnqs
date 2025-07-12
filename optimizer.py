@@ -35,7 +35,7 @@ class QOptimzer:
         self.hamiltonian = hamiltonian
         self.sampler = sampler
         self.learning_rate = learning_rate
-        self.optimizer = tf.optimizers.SGD(learning_rate=learning_rate)
+        self.optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
     def train(self, n_iterations, verbose=True):
         """Run optimization loop for a number of iterations.
