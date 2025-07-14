@@ -58,15 +58,14 @@ class TFIH:
         samples_size = tf.shape(samples)[0]
         energies = tf.zeros(samples_size, dtype=tf.complex64)
         
-        #spins = 2.0 * samples - 1.0
-        spins = 2.0 * tf.cast(samples, tf.float32) - tf.ones_like(
-            samples, dtype=tf.float32
+        spins = 2.0 * tf.cast(samples, tf.complex64) - tf.ones_like(
+            samples, dtype=tf.complex64
         )
 
         for i, j in self.nn_pairs:
             s_i = spins[:, i]
             s_j = spins[:, j]
-            energies -= self.J * tf.cast(s_i * s_j, tf.complex64)
+            energies -= self.J * s_i * s_j
         
         log_psi_original = wave_function.log_psi(samples)
         
@@ -107,10 +106,10 @@ class Ising1D(TFIH):
             Tensor of local energies for each sample (batch_size,)
         """
         samples_size = tf.shape(samples)[0]
-        energies = tf.zeros(samples_size, dtype=tf.float32)
+        energies = tf.zeros(samples_size, dtype=tf.complex64)
         
-        spins = 2.0 * tf.cast(samples, tf.float32) - tf.ones_like(
-            samples, dtype=tf.float32
+        spins = 2.0 * tf.cast(samples, tf.complex64) - tf.ones_like(
+            samples, dtype=tf.complex64
         )
 
         for i, j in self.nn_pairs:
@@ -196,4 +195,4 @@ class TFIH2D(TFIH):
                 elif pbc:
                     nn_pairs.append((idx, j))
         return nn_pairs
-    
+
