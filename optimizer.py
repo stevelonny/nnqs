@@ -110,7 +110,8 @@ class VMC(QOptimzer):
                 grad_energy = tf.reduce_mean(loc_grad, axis=0)
                 grad_log_psi_mean = tf.reduce_mean(grad_i, axis=0)
 
-                vmc_grad = 2.0 * (grad_energy - mean_energy * grad_log_psi_mean)
+                vmc_grad = 2.0 * tf.math.real(grad_energy - mean_energy * grad_log_psi_mean)
+                vmc_grad = tf.cast(vmc_grad, tf.complex64)  # Ensure dtype matches variable
                 gradients.append(vmc_grad)
             else:
                 gradients.append(None)
@@ -209,9 +210,13 @@ class StochasticReconfiguration(QOptimzer):
             for var, d in zip(self.wave_function.trainable_variables, gradients)
         ]
 
-        self.optimizer.apply_gradients(
-            zip(gradients, self.wave_function.trainable_variables)
-        )
+        grads_vars = []
+        for grad, var in zip(gradients, self.wave_function.trainable_variables):
+            grad_real = tf.math.real(grad)
+            if var.dtype.is_complex:
+                grad_real = tf.cast(grad_real, var.dtype)
+            grads_vars.append((grad_real, var))
+        self.optimizer.apply_gradients(grads_vars)
 
         variance = tf.reduce_mean(tf.square(local_energies - mean_energy))
         return mean_energy, variance
