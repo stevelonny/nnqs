@@ -25,15 +25,15 @@ class RBM(tf.Module):
         )
         self.b = tf.Variable(
             tf.complex(
-                tf.random.normal((n_visible,), stddev=std_visible),
-                tf.random.normal((n_visible,), stddev=std_visible),
+                tf.random.normal((n_hidden,), stddev=std_hidden),
+                tf.random.normal((n_hidden,), stddev=std_hidden),
             ),
             name="hidden_bias"
         )
         self.W = tf.Variable(
             tf.complex(
-                tf.random.normal((n_visible, n_hidden), stddev=std_visible),
-                tf.random.normal((n_visible, n_hidden), stddev=std_visible),
+                tf.random.normal((n_visible, n_hidden), stddev=std_weights),
+                tf.random.normal((n_visible, n_hidden), stddev=std_weights),
             ),
             name="weights"
         )

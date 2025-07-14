@@ -175,15 +175,17 @@ class GibbsSampler:
         """
         # Start from persistent visible state
         v = tf.cast(self.current_state, tf.float32)
-        # Gibbs sampling steps
         for _ in range(self.k):
             # Sample hidden given visible
-            p_h = tf.sigmoid(wave_function.b + tf.matmul(v, wave_function.W))
+            v_complex = tf.cast(v, wave_function.W.dtype)
+            v_W = tf.matmul(v_complex, wave_function.W)
+            p_h = tf.sigmoid(tf.math.real(wave_function.b + v_W))
             h = tf.cast(tf.random.uniform(tf.shape(p_h), dtype=tf.float32) < p_h, tf.float32)
             # Sample visible given hidden
-            p_v = tf.sigmoid(wave_function.a + tf.matmul(h, tf.transpose(wave_function.W)))
+            h_complex = tf.cast(h, wave_function.W.dtype)
+            h_Wt = tf.matmul(h_complex, tf.transpose(wave_function.W))
+            p_v = tf.sigmoid(tf.math.real(wave_function.a + h_Wt))
             v = tf.cast(tf.random.uniform(tf.shape(p_v), dtype=tf.float32) < p_v, tf.float32)
-        # Update persistent state
         self.current_state.assign(tf.cast(v, tf.int32))
         return v
 
