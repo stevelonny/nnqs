@@ -156,7 +156,7 @@ class Ising2D(Ising1D):
                 if i < L - 1:
                     nn_pairs.append((idx, idx + L))
                 elif pbc:
-                    nn_pairs.append((idx, j))  # Wrap around to top row
+                    nn_pairs.append((idx, (j % L)))  # Wrap around to top row of the same column
         
         return nn_pairs
 
