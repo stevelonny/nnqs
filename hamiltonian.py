@@ -56,7 +56,7 @@ class TFIH:
             Tensor of local energies for each sample (batch_size,)
         """
         samples_size = tf.shape(samples)[0]
-        energies = tf.zeros(samples_size, dtype=tf.float32)
+        energies = tf.zeros(samples_size, dtype=tf.complex64)
         
         #spins = 2.0 * samples - 1.0
         spins = 2.0 * tf.cast(samples, tf.float32) - tf.ones_like(
@@ -66,7 +66,7 @@ class TFIH:
         for i, j in self.nn_pairs:
             s_i = spins[:, i]
             s_j = spins[:, j]
-            energies -= self.J * s_i * s_j
+            energies -= self.J * tf.cast(s_i * s_j, tf.complex64)
         
         log_psi_original = wave_function.log_psi(samples)
         
