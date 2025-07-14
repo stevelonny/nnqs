@@ -184,16 +184,19 @@ class StochasticReconfiguration(QOptimzer):
         O_centered = O - O_mean
 
         # compute covariance matrix / QGT
-        S = tf.matmul(O_centered, O_centered, transpose_a=True) / tf.cast(
-            n_samples, tf.float32
-        )
-
+        O_O = tf.matmul(O_centered, O_centered, transpose_a=True)
+        norm = tf.cast(n_samples, O_centered.dtype)
+        #print("just before S")
+        S = O_O / norm
+        #print("S shape:", S.shape)
+        #print("S dtype:", S.dtype)
         # compute force vector
         mean_energy = tf.reduce_mean(local_energies)
         F_vec = (
             tf.reduce_mean(local_energies[:, None] * O, axis=0) - mean_energy * O_mean
         )
-
+        #print("F_vec shape:", F_vec.shape)
+        #print("F_vec dtype:", F_vec.dtype)
         # solve for delta
         P = tf.shape(S)[0]
         S_reg = S + self.epsilon * tf.eye(P, dtype=S.dtype)
