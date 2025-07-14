@@ -38,6 +38,14 @@ class RBM(tf.Module):
             name="weights"
         )
 
+    def __init__(self, path):
+        param = np.load(path)
+        self.n_visible = param['n_visible']
+        self.n_hidden = param['n_hidden']
+        self.a = tf.Variable(param['a'], name="visible_bias")
+        self.b = tf.Variable(param['b'], name="hidden_bias")
+        self.W = tf.Variable(param['W'], name="weights")
+
     def log_psi(self, samples):
         casted_samples = 2.0 * tf.cast(samples, tf.complex64) - tf.ones_like(samples, dtype=tf.complex64)
         sum_visible = tf.reduce_sum(self.a * casted_samples, axis=1)
@@ -47,12 +55,25 @@ class RBM(tf.Module):
 
         return sum_visible + sum_hidden
 
-    def psi(self, samples):
-        return tf.exp(self.log_psi(samples))
-
     def log_prob(self, samples):
         logpsi = self.log_psi(samples)
         return 2.0 * tf.math.real(logpsi)
+    
+    def save_parameters(self, path):
+        np.savez(
+            path,
+            n_visible=self.n_visible,
+            n_hidden=self.n_hidden,
+            a=self.a.numpy(),
+            b=self.b.numpy(),
+            W=self.W.numpy()
+        )
+    
+    def load_parameters(self, path):
+        data = np.load(path)
+        self.n_visible = data['n_visible']
+        self.n_hidden = data['n_hidden']
+        self.a.assign(data['a'])
+        self.b.assign(data['b'])
+        self.W.assign(data['W'])
 
-    def probability(self, samples):
-        return tf.exp(self.log_prob(samples))
