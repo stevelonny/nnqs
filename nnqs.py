@@ -5,46 +5,46 @@ import numpy as np
 class RBM(tf.Module):
 
     def __init__(
-        self, n_visible, n_hidden, std_visible=0.1, std_hidden=0.1, std_weights=0.1
+        self, n_visible=4, n_hidden=8, std_visible=0.1, std_hidden=0.1, std_weights=0.1, path=None
     ):
         super(RBM, self).__init__()
+        if path is not None:
+            param = np.load(path)
+            self.n_visible = param['n_visible']
+            self.n_hidden = param['n_hidden']
+            self.a = tf.Variable(param['a'], name="visible_bias")
+            self.b = tf.Variable(param['b'], name="hidden_bias")
+            self.W = tf.Variable(param['W'], name="weights")
+        else:
+            self.n_visible = n_visible
+            self.n_hidden = n_hidden
 
-        self.n_visible = n_visible
-        self.n_hidden = n_hidden
+            self.std_visible = std_visible
+            self.std_hidden = std_hidden
+            self.std_weights = std_weights
 
-        self.std_visible = std_visible
-        self.std_hidden = std_hidden
-        self.std_weights = std_weights
+            self.a = tf.Variable(
+                tf.complex(
+                    tf.random.normal((n_visible,), stddev=std_visible),
+                    tf.random.normal((n_visible,), stddev=std_visible),
+                ),
+                name="visible_bias"
+            )
+            self.b = tf.Variable(
+                tf.complex(
+                    tf.random.normal((n_hidden,), stddev=std_hidden),
+                    tf.random.normal((n_hidden,), stddev=std_hidden),
+                ),
+                name="hidden_bias"
+            )
+            self.W = tf.Variable(
+                tf.complex(
+                    tf.random.normal((n_visible, n_hidden), stddev=std_weights),
+                    tf.random.normal((n_visible, n_hidden), stddev=std_weights),
+                ),
+                name="weights"
+            )
 
-        self.a = tf.Variable(
-            tf.complex(
-                tf.random.normal((n_visible,), stddev=std_visible),
-                tf.random.normal((n_visible,), stddev=std_visible),
-            ),
-            name="visible_bias"
-        )
-        self.b = tf.Variable(
-            tf.complex(
-                tf.random.normal((n_hidden,), stddev=std_hidden),
-                tf.random.normal((n_hidden,), stddev=std_hidden),
-            ),
-            name="hidden_bias"
-        )
-        self.W = tf.Variable(
-            tf.complex(
-                tf.random.normal((n_visible, n_hidden), stddev=std_weights),
-                tf.random.normal((n_visible, n_hidden), stddev=std_weights),
-            ),
-            name="weights"
-        )
-
-    def __init__(self, path):
-        param = np.load(path)
-        self.n_visible = param['n_visible']
-        self.n_hidden = param['n_hidden']
-        self.a = tf.Variable(param['a'], name="visible_bias")
-        self.b = tf.Variable(param['b'], name="hidden_bias")
-        self.W = tf.Variable(param['W'], name="weights")
 
     def log_psi(self, samples):
         casted_samples = 2.0 * tf.cast(samples, tf.complex64) - tf.ones_like(samples, dtype=tf.complex64)

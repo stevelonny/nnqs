@@ -9,6 +9,82 @@ Provides:
 import tensorflow as tf
 import numpy as np
 
+class Callback:
+    def on_train_begin(self, logs=None): pass
+    def on_step_end( self, step, logs=None): pass
+    def on_train_end(  self, logs=None): pass
+
+class EarlyStoppingVariance(Callback):
+    def __init__(self, patience=5):
+        """Initialize the callback with a patience parameter.
+
+        Args:
+            patience: Number of consecutive iterations with zero variance to wait before stopping.
+            min_variance: Minimum variance threshold to trigger early stopping.
+        """
+        self.patience = patience
+        self.counter = 0
+        self.stopped = False
+
+    def on_step_end(self, step, logs=None):
+        """Check the variance at the end of each step and update the stopping condition.
+
+        Args:
+            step: Current iteration step.
+            logs: Dictionary containing 'variance' key.
+        """
+        variance = logs.get('variance', None)
+        if np.isclose(variance, 0.00):
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.stopped = True
+                print(f"Early stopping triggered at step {step} due to low variance ({variance:.2e}).")
+                return True  # Signal to stop training
+        else:
+            self.counter = 0
+        return False
+
+    def on_train_begin(self, logs=None):
+        """Reset the state at the beginning of training."""
+        self.counter = 0
+        self.stopped = False
+
+    def on_train_end(self, logs=None):
+        """Log a message if early stopping was triggered."""
+        if self.stopped:
+            print("Training stopped early due to low variance.")
+
+def CheckpointCallback(path):
+    """Callback to save model parameters at the end of training."""
+    class Checkpoint(Callback):
+        def __init__(self, path):
+            self.path = path
+            self.wave_function = None
+
+        def on_train_begin(self, logs=None):
+            """Set the wave function reference at the beginning of training."""
+            # This will be set by the optimizer
+            pass
+
+        def on_train_end(self, logs=None):
+            """Save the wave function parameters to a file."""
+            if self.wave_function is None:
+                print("Warning: Wave function not set in checkpoint callback.")
+                return
+            
+            params = {
+                'n_visible': self.wave_function.n_visible,
+                'n_hidden': self.wave_function.n_hidden,
+                'a': self.wave_function.a.numpy(),
+                'b': self.wave_function.b.numpy(),
+                'W': self.wave_function.W.numpy()
+            }
+            np.savez(self.path, **params)
+            print(f"Checkpoint saved to {self.path}")
+
+    return Checkpoint(path)
+
+
 class QOptimzer:
     """Base class for quantum optimizers applying variational Monte Carlo or stochastic reconfiguration methods.
 
@@ -22,7 +98,7 @@ class QOptimzer:
         optimizer: TensorFlow optimizer instance used for parameter updates.
     """
 
-    def __init__(self, wave_function, hamiltonian, sampler, learning_rate=0.01):
+    def __init__(self, wave_function, hamiltonian, sampler, learning_rate=0.01, callbacks=None):
         """Initialize the optimizer with the given wave function, Hamiltonian, sampler, and learning rate.
 
         Args:
@@ -36,6 +112,18 @@ class QOptimzer:
         self.sampler = sampler
         self.learning_rate = learning_rate
         self.optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+        self.callbacks = callbacks or []
+
+    def _call(self, name, *args, **kwargs):
+        for cb in self.callbacks:
+            # Set wave function reference for checkpoint callback
+            if hasattr(cb, 'wave_function'):
+                cb.wave_function = self.wave_function
+            result = getattr(cb, name)(*args, **kwargs)
+            # Handle early stopping
+            if name == "on_step_end" and hasattr(cb, 'stopped') and cb.stopped:
+                return True
+        return False
 
     def train(self, n_iterations, verbose=True):
         """Run optimization loop for a number of iterations.
@@ -49,14 +137,20 @@ class QOptimzer:
         """
         energy_history = []
         variance_history = []
+        self._call("on_train_begin", logs={})
         for i in range(n_iterations):
             energy, variance = self.optimize_step()
-            energy_history.append(float(energy))
-            variance_history.append(float(variance))
+            energy_history.append(energy)
+            variance_history.append(variance)
+            logs = {'iteration':i, 'energy':energy, 'variance':variance}
+            should_stop = self._call("on_step_end", step=i, logs=logs)
             if verbose:
                 print(
                     f"Iteration {i}: Energy = {energy:.6f}, Variance = {variance:.6f}"
                 )
+            if should_stop:
+                break
+        self._call("on_train_end", logs={"energies": energy_history, "variances": variance_history})
         return {"energies": energy_history, "variances": variance_history}
     
     def optimize_step(self):
@@ -76,8 +170,8 @@ class VMC(QOptimzer):
     Implements optimization by computing gradients of the energy expectation value via Monte Carlo sampling.
     """
 
-    def __init__(self, wave_function, hamiltonian, sampler, learning_rate):
-        super().__init__(wave_function, hamiltonian, sampler, learning_rate)
+    def __init__(self, wave_function, hamiltonian, sampler, learning_rate, callbacks=None):
+        super().__init__(wave_function, hamiltonian, sampler, learning_rate, callbacks)
 
     def compute_gradients(self, samples, local_energies):
         """Compute parameter gradients using VMC energy derivatives.
@@ -149,8 +243,8 @@ class StochasticReconfiguration(QOptimzer):
     Approximates the quantum geometric tensor via sample covariance of score functions.
     """
 
-    def __init__(self, wave_function, hamiltonian, sampler, learning_rate=0.01, epsilon=0.001):
-        super().__init__(wave_function, hamiltonian, sampler, learning_rate)
+    def __init__(self, wave_function, hamiltonian, sampler, learning_rate=0.01, epsilon=0.001, callbacks=None):
+        super().__init__(wave_function, hamiltonian, sampler, learning_rate, callbacks=callbacks)
         self.epsilon = epsilon
 
     def optimize_step(self):
