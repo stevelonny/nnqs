@@ -165,6 +165,7 @@ class GibbsSampler:
             trainable=False,
             name="gibbs_state",
         )
+        tf.random.set_seed(123)  # For reproducibility
 
     def sample(self, wave_function):
         """
