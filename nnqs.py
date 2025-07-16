@@ -45,7 +45,7 @@ class RBM(tf.Module):
                 name="weights"
             )
 
-
+    @tf.function
     def log_psi(self, samples):
         casted_samples = 2.0 * tf.cast(samples, tf.complex64) - tf.ones_like(samples, dtype=tf.complex64)
         sum_visible = tf.reduce_sum(self.a * casted_samples, axis=1)
