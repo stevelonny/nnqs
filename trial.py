@@ -30,16 +30,16 @@ callbacks = [
     optimizer.CheckpointCallback("8spin_4_VMC.npz")
 ]
 
-opt = optimizer.VMC(
+opt = optimizer.StochasticReconfiguration(
     wave_function=wave,
     hamiltonian=ham,
     sampler=gibbs_sampler,
     learning_rate=0.01,
     callbacks=callbacks,
-    #epsilon=1e-3
+    epsilon=1e-3
 )
 
-results_sr = opt.train(n_iterations=1000)
+results_sr = opt.train(n_iterations=2000)
 
 np.savez(
     "8spin_4_VMC_history.npz",
