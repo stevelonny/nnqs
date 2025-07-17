@@ -45,10 +45,10 @@ class Ising1D:
             Tensor of local energies for each sample (batch_size,)
         """
         samples_size = tf.shape(samples)[0]
-        energies = tf.zeros(samples_size, dtype=tf.float32)
-        
-        spins = 2.0 * samples - tf.ones_like(
-            samples, dtype=tf.float32
+        energies = tf.zeros(samples_size, dtype=tf.complex64)
+
+        spins = 2.0 * tf.cast(samples, dtype=tf.complex64) - tf.ones_like(
+            samples, dtype=tf.complex64
         )
 
         for i, j in self.nn_pairs:
