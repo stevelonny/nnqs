@@ -4,6 +4,8 @@ Investigation into Neural Nets usage as Quantum States in Many-Body Quantum Prob
 
 This project is made for the Deep Learning with Applications course @ UNIMI in A.Y. 2025 - 2026 . I am presenting the following article [Giuseppe Carleo, Matthias Troyer, Solving the quantum many-body problem with artificial neural networks. Science 355, 602-606 (2017)](https://doi.org/10.1126/science.aag2302), by providing a demo on ground state search.
 
+The relative presentation is hosted at [nnqs-presentation](https://github.com/stevelonny/nnqs-presentation).
+
 This project relies on the TensorFlow library.
 
 ## Quick Setup and Run
